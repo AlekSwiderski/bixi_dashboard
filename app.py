@@ -8,6 +8,43 @@ from datetime import datetime
 import os
 from math import radians, sin, cos, sqrt, atan2
 
+# --- Constants ---
+# Data Loading & Filtering
+BIXI_CSV_SAMPLE_SIZE = 100000
+MONTREAL_LAT_LOWER_BOUND = 40.0
+MONTREAL_LON_UPPER_BOUND = -70.0 # Note: longitude is negative, so this is an upper bound for valid values
+MIN_TRIP_DURATION_MINUTES = 0.0
+MAX_TRIP_DURATION_MINUTES = 1440.0 # 24 hours
+MIN_TRIP_DISTANCE_KM = 0.0
+MAX_TRIP_DISTANCE_KM = 15.0
+MIN_TRIP_SPEED_KMH = 0.0 
+MAX_TRIP_SPEED_KMH = 35.0
+
+# Visualization parameters
+MAX_DURATION_VISUALIZATION_MINUTES = 60
+MAX_DISTANCE_VISUALIZATION_KM = 10
+MAX_SPEED_VISUALIZATION_KMH = 30
+TOP_STATIONS_COUNT = 10
+TOP_DISTRICTS_COUNT = 5
+TOP_STATION_PAIRS_COUNT = 15
+SIGNIFICANT_DISTRICT_TRIP_COUNT = 50
+TOP_STATIONS_MAP_COUNT = 100
+
+# Map settings
+MAP_DEFAULT_ZOOM = 11
+MAP_MONTREAL_CENTER_LAT = 45.5088
+MAP_MONTREAL_CENTER_LON = -73.5878
+
+# Geographical constants
+EARTH_RADIUS_KM = 6371
+
+# Time-based constants
+RUSH_HOUR_MORNING_START = 7
+RUSH_HOUR_MORNING_END = 9
+RUSH_HOUR_EVENING_START = 16
+RUSH_HOUR_EVENING_END = 18
+# --- End Constants ---
+
 # Get the directory where the script is located
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_file_path = os.path.join(current_dir, 'Bixi_2023_sample.csv')
@@ -20,105 +57,7 @@ app = dash.Dash(__name__,
 
 server = app.server
 
-
-
-# Custom CSS for better styling
-app.index_string = '''
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-        <style>
-            body {
-                font-family: 'Segoe UI', 'Roboto', sans-serif;
-                background-color: #f5f7fa;
-                margin: 0;
-                color: #2c3e50;
-            }
-            .dashboard-header {
-                background: linear-gradient(135deg, #2c3e50, #4ca1af);
-                color: white;
-                padding: 20px;
-                border-radius: 0 0 15px 15px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            .filters-panel {
-                background-color: white;
-                border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                padding: 20px;
-                height: calc(100vh - 40px);
-                overflow-y: auto;
-                position: fixed;
-                width: 15%;
-                max-width: 250px;
-                z-index: 1000;
-            }
-            .stats-box {
-                background-color: #f8f9fa;
-                border-radius: 8px;
-                padding: 15px;
-                margin-top: 20px;
-                border-left: 4px solid #3498db;
-            }
-            .chart-container {
-                background-color: white;
-                border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                margin-bottom: 20px;
-                padding: 15px;
-                transition: transform 0.3s;
-            }
-            .chart-container:hover {
-                transform: translateY(-5px);
-            }
-            .dash-tab {
-                border-radius: 5px 5px 0 0;
-            }
-            .dash-tab--selected {
-                background-color: #3498db;
-                color: white;
-            }
-            .load-button {
-                background: linear-gradient(to right, #3498db, #2980b9);
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                text-align: center;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 16px;
-                margin: 20px 0px;
-                cursor: pointer;
-                border-radius: 50px;
-                width: 100%;
-                transition: all 0.3s;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            .load-button:hover {
-                background: linear-gradient(to right, #2980b9, #3498db);
-                box-shadow: 0 6px 8px rgba(0,0,0,0.15);
-            }
-            .dropdown {
-                border-radius: 5px;
-                border: 1px solid #ddd;
-                margin-bottom: 15px;
-            }
-        </style>
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-'''
+# Custom CSS for better styling is now in assets/style.css
 
 # App layout with improved styling
 app.layout = html.Div([
@@ -338,8 +277,6 @@ app.layout = html.Div([
                                     html.Li("The sample size shows 100,000 trips, but the total count is lower (approximately 95,000) because invalid trips are filtered out during processing."),
                                 ], style={'marginLeft': '20px'}),
                                 
-
-                                
                             ], style={'marginBottom': '30px', 'lineHeight': '1.6'})
                         ], className='chart-container', style={'width': '100%', 'padding': '30px'})
                     ])
@@ -360,9 +297,6 @@ def load_bixi_data(file_path):
     Load a fixed sample of the Bixi dataset with time conversions
     to prevent memory issues with the full 3GB dataset
     """
-    # Define the fixed sample size
-    SAMPLE_SIZE = 100000
-    
     # Define optimized dtypes
     dtypes = {
         'STARTSTATIONNAME': str,
@@ -374,18 +308,18 @@ def load_bixi_data(file_path):
         'ENDSTATIONLATITUDE': float,
         'ENDSTATIONLONGITUDE': float,
         'STARTTIMEMS': 'int64',
-        'ENDTIMEMS': float
+        'ENDTIMEMS': 'Int64'  # Use nullable integer type
     }
     
     # Load data with error handling
     try:
         # First try with specified dtypes
-        df = pd.read_csv(file_path, nrows=SAMPLE_SIZE, dtype=dtypes)
+        df = pd.read_csv(file_path, nrows=BIXI_CSV_SAMPLE_SIZE, dtype=dtypes)
     except Exception as e:
         print(f"Error with specified dtypes: {e}")
         # If that fails, try with automatic dtype inference
         try:
-            df = pd.read_csv(file_path, nrows=SAMPLE_SIZE)
+            df = pd.read_csv(file_path, nrows=BIXI_CSV_SAMPLE_SIZE)
             print("Loaded with automatic dtype inference")
         except Exception as e:
             print(f"Error with automatic inference: {e}")
@@ -408,67 +342,118 @@ def load_bixi_data(file_path):
         df['is_weekend'] = df['start_time'].dt.dayofweek >= 5
         
         # Filter valid trips
-        df = df[(df['duration_minutes'] > 0) & (df['duration_minutes'] < 1440)]  # Max 24 hours
-        
-        # Debug info
-        print(f"Loaded {len(df)} valid trips from {file_path}")
+        initial_rows = len(df)
+        print(f"Data before duration filtering: {initial_rows} rows")
+        df = df[(df['duration_minutes'] > MIN_TRIP_DURATION_MINUTES) & (df['duration_minutes'] < MAX_TRIP_DURATION_MINUTES)]
+        rows_after_duration_filter = len(df)
+        print(f"Data after duration filtering: {rows_after_duration_filter} rows ({initial_rows - rows_after_duration_filter} rows dropped)")
         
         # Calculate distances for valid coordinates
-        # Make sure latitude and longitude are numeric
         for col in ['STARTSTATIONLATITUDE', 'STARTSTATIONLONGITUDE', 'ENDSTATIONLATITUDE', 'ENDSTATIONLONGITUDE']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-        valid_coords = (
-            (df['STARTSTATIONLATITUDE'] > 40) &  # Valid Montreal latitude 
-            (df['STARTSTATIONLONGITUDE'] < -70) & # Valid Montreal longitude
-            (df['ENDSTATIONLATITUDE'] > 40) & 
-            (df['ENDSTATIONLONGITUDE'] < -70)
+        
+        initial_rows_coords = len(df)
+        print(f"Data before coordinate filtering: {initial_rows_coords} rows")
+        
+        valid_coords_mask = (
+            (df['STARTSTATIONLATITUDE'] > MONTREAL_LAT_LOWER_BOUND) &
+            (df['STARTSTATIONLONGITUDE'] < MONTREAL_LON_UPPER_BOUND) &
+            (df['ENDSTATIONLATITUDE'] > MONTREAL_LAT_LOWER_BOUND) &
+            (df['ENDSTATIONLONGITUDE'] < MONTREAL_LON_UPPER_BOUND)
         )
         
-        df.loc[valid_coords, 'distance_km'] = df.loc[valid_coords].apply(
+        df.loc[valid_coords_mask, 'distance_km'] = df.loc[valid_coords_mask].apply(
             lambda row: haversine_distance(
                 row['STARTSTATIONLATITUDE'], row['STARTSTATIONLONGITUDE'],
                 row['ENDSTATIONLATITUDE'], row['ENDSTATIONLONGITUDE']
             ), axis=1
         )
         
-        # Speed calculation
-        df.loc[valid_coords, 'speed_kmh'] = (
-            df.loc[valid_coords, 'distance_km'] / (df.loc[valid_coords, 'duration_minutes'] / 60)
+        df.loc[valid_coords_mask & df['duration_minutes'].notna() & (df['duration_minutes'] > MIN_TRIP_DURATION_MINUTES), 'speed_kmh'] = (
+            df.loc[valid_coords_mask & df['duration_minutes'].notna() & (df['duration_minutes'] > MIN_TRIP_DURATION_MINUTES), 'distance_km'] / 
+            (df.loc[valid_coords_mask & df['duration_minutes'].notna() & (df['duration_minutes'] > MIN_TRIP_DURATION_MINUTES), 'duration_minutes'] / 60)
         )
-        
-        # Filter realistic speeds and distances
+
+        initial_rows_distance_filter = len(df)
+        print(f"Data before distance filtering: {initial_rows_distance_filter} rows")
         df = df[(df['distance_km'].isna()) | 
-               ((df['distance_km'] >= 0) & (df['distance_km'] < 15))]
-        
+               ((df['distance_km'] >= MIN_TRIP_DISTANCE_KM) & (df['distance_km'] < MAX_TRIP_DISTANCE_KM))]
+        rows_after_distance_filter = len(df)
+        print(f"Data after distance filtering: {rows_after_distance_filter} rows ({initial_rows_distance_filter - rows_after_distance_filter} rows dropped)")
+
+        initial_rows_speed_filter = len(df)
+        print(f"Data before speed filtering: {initial_rows_speed_filter} rows")
         df = df[(df['speed_kmh'].isna()) | 
-               ((df['speed_kmh'] > 0) & (df['speed_kmh'] < 35))]
+               ((df['speed_kmh'] > MIN_TRIP_SPEED_KMH) & (df['speed_kmh'] < MAX_TRIP_SPEED_KMH))]
+        rows_after_speed_filter = len(df)
+        print(f"Data after speed filtering: {rows_after_speed_filter} rows ({initial_rows_speed_filter - rows_after_speed_filter} rows dropped)")
         
+        print(f"Finished data cleaning. Final dataset: {len(df)} rows")
         return df
         
     except Exception as e:
         print(f"Error processing data: {e}")
         raise e
 
-def haversine_distance(lat1, lon1, lat2, lon2):
+def haversine_distance(lat1_orig, lon1_orig, lat2_orig, lon2_orig):
     """Calculate distance between two points in km using Haversine formula"""
     try:
-        R = 6371  # Earth radius in km
+        # Attempt to convert inputs to float, store original values for logging
+        try:
+            lat1 = float(lat1_orig)
+            lon1 = float(lon1_orig)
+            lat2 = float(lat2_orig)
+            lon2 = float(lon2_orig)
+        except ValueError as ve:
+            print(f"Haversine distance: Error converting inputs to float. lat1='{lat1_orig}', lon1='{lon1_orig}', lat2='{lat2_orig}', lon2='{lon2_orig}'. Details: {ve}")
+            return None
         
         # Convert to radians
-        lat1, lon1, lat2, lon2 = map(radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
+        rad_lat1, rad_lon1, rad_lat2, rad_lon2 = map(radians, [lat1, lon1, lat2, lon2])
         
         # Haversine formula
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        dlat = rad_lat2 - rad_lat1
+        dlon = rad_lon2 - rad_lon1
+        a = sin(dlat/2)**2 + cos(rad_lat1) * cos(rad_lat2) * sin(dlon/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
-        distance = R * c
+        distance = EARTH_RADIUS_KM * c
         
         return distance
     except Exception as e:
-        print(f"Error calculating distance: {e}")
+        # This will catch other unexpected errors during calculation (e.g., math domain errors if a is out of range for sqrt)
+        print(f"Haversine distance: Error calculating distance for ({lat1_orig}, {lon1_orig}, {lat2_orig}, {lon2_orig}). Details: {e}")
         return None
+
+def create_error_figure(error_message="An error occurred while generating this chart."):
+    fig = go.Figure()
+    fig.add_layout_image(
+        dict(
+            source="https://images.plot.ly/plotly-documentation/images/logo-plotly-layout-image.png", # Or a generic error icon
+            xref="paper", yref="paper",
+            x=0.5, y=0.6,
+            sizex=0.3, sizey=0.3,
+            xanchor="center", yanchor="middle",
+            opacity=0.3
+        )
+    )
+    fig.update_layout(
+        xaxis_visible=False,
+        yaxis_visible=False,
+        annotations=[
+            dict(
+                text=error_message,
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.4,
+                showarrow=False,
+                font=dict(size=14, color="#FF0000") # Red color for error
+            )
+        ],
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
+    return fig
 
 # Callback to load data
 @app.callback(
@@ -518,7 +503,7 @@ def load_data(n_clicks):
                 
                 html.Div([
                     html.Span("Initial Sample: ", style={'fontWeight': 'bold'}),
-                    html.Span("100,000 trips")
+                    html.Span(f"{BIXI_CSV_SAMPLE_SIZE:,} trips")
                 ], style={'margin': '5px 0'}),
                 
                 html.Div([
@@ -574,7 +559,7 @@ def load_data(n_clicks):
             
             html.Div([
                 html.Span("Initial Sample: ", style={'fontWeight': 'bold'}),
-                html.Span("100,000 trips")
+                html.Span(f"{BIXI_CSV_SAMPLE_SIZE:,} trips")
             ], style={'margin': '5px 0'}),
             
             html.Div([
@@ -633,8 +618,6 @@ def filter_dataframe(df, time_filter, district_filter=None):
     elif time_filter == 'weekend':
         filtered_df = filtered_df[filtered_df['is_weekend']]
     
-    # We've removed the district filter functionality
-    
     return filtered_df
 
 # Callback for hourly pattern chart
@@ -645,26 +628,26 @@ def filter_dataframe(df, time_filter, district_filter=None):
 )
 def update_hourly_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
-    df = filter_dataframe(data_cache['df'], time_filter)
-    hourly_counts = df.groupby('start_hour').size().reset_index(name='count')
-    
-    fig = px.bar(hourly_counts, x='start_hour', y='count',
-                labels={'start_hour': 'Hour of Day', 'count': 'Number of Trips'},
-                title='Hourly Trip Distribution',
-                color_discrete_sequence=['#3498db'])
-    
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        xaxis=dict(tickmode='linear', tick0=0, dtick=1, gridcolor='#f0f0f0'),
-        yaxis=dict(gridcolor='#f0f0f0'),
-        hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
-        title_font=dict(size=18, color='#333'),
-    )
-    
-    return fig
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
+    try:
+        df = filter_dataframe(data_cache['df'], time_filter)
+        hourly_counts = df.groupby('start_hour').size().reset_index(name='count')
+        fig = px.bar(hourly_counts, x='start_hour', y='count',
+                    labels={'start_hour': 'Hour of Day', 'count': 'Number of Trips'},
+                    title='Hourly Trip Distribution',
+                    color_discrete_sequence=['#3498db'])
+        fig.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            xaxis=dict(tickmode='linear', tick0=0, dtick=1, gridcolor='#f0f0f0'),
+            yaxis=dict(gridcolor='#f0f0f0'),
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
+            title_font=dict(size=18, color='#333'),
+        )
+        return fig
+    except Exception as e:
+        print(f"Error in update_hourly_chart: {str(e)}")
+        return create_error_figure(f"Could not load hourly chart. Details: {str(e)[:100]}")
 
 # Callback for daily pattern chart
 @app.callback(
@@ -674,40 +657,32 @@ def update_hourly_chart(n_clicks, time_filter):
 )
 def update_daily_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
-    df = filter_dataframe(data_cache['df'], time_filter)
-    
-    # Order days correctly
-    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    daily_counts = df.groupby('start_day').size().reset_index(name='count')
-    
-    # Ensure all days are present
-    day_df = pd.DataFrame({'start_day': day_order})
-    daily_counts = day_df.merge(daily_counts, on='start_day', how='left').fillna(0)
-    
-    # Color array to highlight weekends
-    colors = ['#3498db'] * 5 + ['#e74c3c'] * 2
-    
-    fig = px.bar(daily_counts, x='start_day', y='count',
-                labels={'start_day': 'Day of Week', 'count': 'Number of Trips'},
-                title='Daily Trip Distribution',
-                category_orders={"start_day": day_order})
-    
-    # Update bar colors to highlight weekends
-    for i, day in enumerate(day_order):
-        fig.data[0].marker.color = colors
-    
-    fig.update_layout(
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        xaxis=dict(gridcolor='#f0f0f0'),
-        yaxis=dict(gridcolor='#f0f0f0'),
-        hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
-        title_font=dict(size=18, color='#333'),
-    )
-    
-    return fig
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
+    try:
+        df = filter_dataframe(data_cache['df'], time_filter)
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        daily_counts = df.groupby('start_day').size().reset_index(name='count')
+        day_df = pd.DataFrame({'start_day': day_order})
+        daily_counts = day_df.merge(daily_counts, on='start_day', how='left').fillna(0)
+        colors = ['#3498db'] * 5 + ['#e74c3c'] * 2
+        fig = px.bar(daily_counts, x='start_day', y='count',
+                    labels={'start_day': 'Day of Week', 'count': 'Number of Trips'},
+                    title='Daily Trip Distribution',
+                    category_orders={"start_day": day_order})
+        for i, day in enumerate(day_order):
+            fig.data[0].marker.color = colors
+        fig.update_layout(
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            xaxis=dict(gridcolor='#f0f0f0'),
+            yaxis=dict(gridcolor='#f0f0f0'),
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
+            title_font=dict(size=18, color='#333'),
+        )
+        return fig
+    except Exception as e:
+        print(f"Error in update_daily_chart: {str(e)}")
+        return create_error_figure(f"Could not load daily chart. Details: {str(e)[:100]}")
 
 # Callback for monthly pattern chart
 @app.callback(
@@ -717,32 +692,22 @@ def update_daily_chart(n_clicks, time_filter):
 )
 def update_monthly_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
-    df = filter_dataframe(data_cache['df'], time_filter)
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
-        # Count trips by month
+        df = filter_dataframe(data_cache['df'], time_filter)
         monthly_counts = df.groupby('start_month').size().reset_index(name='count')
-        
-        # Ensure all months are represented
         all_months = pd.DataFrame({'start_month': range(1, 13)})
         monthly_counts = all_months.merge(monthly_counts, on='start_month', how='left').fillna(0)
-        
-        # Add month names for display
         month_names = {
             1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
             7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'
         }
         monthly_counts['month_name'] = monthly_counts['start_month'].map(month_names)
-        
-        # Create a colorscale that peaks in summer months
         summer_colors = [
-            '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c',  # blues for winter/spring
-            '#08519c', '#08306b', '#08306b',  # dark blue for summer peak
-            '#4292c6', '#6baed6', '#9ecae1'   # back to lighter blues for fall/winter
+            '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c',
+            '#08519c', '#08306b', '#08306b',
+            '#4292c6', '#6baed6', '#9ecae1'
         ]
-        
         fig = px.bar(
             monthly_counts, 
             x='month_name', 
@@ -751,10 +716,8 @@ def update_monthly_chart(n_clicks, time_filter):
             title='Monthly Trip Distribution',
             category_orders={"month_name": list(month_names.values())}
         )
-        
         for i, month in enumerate(month_names.values()):
             fig.data[0].marker.color = summer_colors
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -763,16 +726,10 @@ def update_monthly_chart(n_clicks, time_filter):
             hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
             title_font=dict(size=18, color='#333'),
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in monthly chart: {e}")
-        # Fallback - use month numbers if month names aren't available
-        monthly_counts = df.groupby('start_month').size().reset_index(name='count')
-        fig = px.bar(monthly_counts, x='start_month', y='count',
-                    labels={'start_month': 'Month', 'count': 'Number of Trips'},
-                    title='Monthly Trip Distribution')
-        return fig
+        print(f"Error in update_monthly_chart: {str(e)}")
+        return create_error_figure(f"Could not load monthly chart. Details: {str(e)[:100]}")
 
 # Callback for weekday vs weekend chart
 @app.callback(
@@ -781,42 +738,29 @@ def update_monthly_chart(n_clicks, time_filter):
 )
 def update_weekday_weekend_chart(n_clicks):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
-        # Use all data
         df = data_cache['df']
-        
-        # Get weekday and weekend data
         weekday = df[~df['is_weekend']]
         weekend = df[df['is_weekend']]
-        
-        # Hourly patterns with error handling
         if len(weekday) > 0:
             weekday_hourly = weekday.groupby('start_hour').size()
             weekday_pct = (weekday_hourly / weekday_hourly.sum() * 100).reset_index(name='percentage')
             weekday_pct['type'] = 'Weekday'
         else:
             weekday_pct = pd.DataFrame({'start_hour': range(24), 'percentage': 0, 'type': 'Weekday'})
-            
         if len(weekend) > 0:
             weekend_hourly = weekend.groupby('start_hour').size()
             weekend_pct = (weekend_hourly / weekend_hourly.sum() * 100).reset_index(name='percentage')
             weekend_pct['type'] = 'Weekend'
         else:
             weekend_pct = pd.DataFrame({'start_hour': range(24), 'percentage': 0, 'type': 'Weekend'})
-        
-        # Ensure all hours are represented
         hours_df = pd.DataFrame({'start_hour': range(24)})
-        
         if 'start_hour' in weekday_pct.columns:
             weekday_pct = hours_df.merge(weekday_pct, on='start_hour', how='left').fillna({'percentage': 0, 'type': 'Weekday'})
-        
         if 'start_hour' in weekend_pct.columns:
             weekend_pct = hours_df.merge(weekend_pct, on='start_hour', how='left').fillna({'percentage': 0, 'type': 'Weekend'})
-        
         combined = pd.concat([weekday_pct, weekend_pct])
-        
         fig = px.line(
             combined, 
             x='start_hour', 
@@ -826,9 +770,7 @@ def update_weekday_weekend_chart(n_clicks):
             title='Hourly Trip Distribution: Weekdays vs Weekends',
             color_discrete_map={'Weekday': '#3498db', 'Weekend': '#e74c3c'}
         )
-        
         fig.update_traces(line=dict(width=3), mode='lines+markers')
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -838,12 +780,10 @@ def update_weekday_weekend_chart(n_clicks):
             title_font=dict(size=18, color='#333'),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in weekday/weekend chart: {e}")
-        # Return empty figure in case of error
-        return go.Figure()
+        print(f"Error in update_weekday_weekend_chart: {str(e)}")
+        return create_error_figure(f"Could not load weekday/weekend chart. Details: {str(e)[:100]}")
 
 # Callback for top stations chart
 @app.callback(
@@ -853,22 +793,16 @@ def update_weekday_weekend_chart(n_clicks):
 )
 def update_top_stations_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Get top 10 start and end stations
-        start_stations = df['STARTSTATIONNAME'].value_counts().head(10).reset_index()
+        start_stations = df['STARTSTATIONNAME'].value_counts().head(TOP_STATIONS_COUNT).reset_index()
         start_stations.columns = ['station', 'count']
         start_stations['type'] = 'Start Station'
-        
-        end_stations = df['ENDSTATIONNAME'].value_counts().head(10).reset_index()
+        end_stations = df['ENDSTATIONNAME'].value_counts().head(TOP_STATIONS_COUNT).reset_index()
         end_stations.columns = ['station', 'count']
         end_stations['type'] = 'End Station'
-        
         combined = pd.concat([start_stations, end_stations])
-        
         fig = px.bar(
             combined, 
             x='count', 
@@ -876,11 +810,10 @@ def update_top_stations_chart(n_clicks, time_filter):
             color='type', 
             barmode='group',
             orientation='h',
-            title='Top 10 Start and End Stations',
+            title=f'Top {TOP_STATIONS_COUNT} Start and End Stations',
             labels={'count': 'Number of Trips', 'station': 'Station'},
             color_discrete_map={'Start Station': '#3498db', 'End Station': '#2ecc71'}
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -890,11 +823,10 @@ def update_top_stations_chart(n_clicks, time_filter):
             title_font=dict(size=18, color='#333'),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in top stations chart: {e}")
-        return go.Figure()
+        print(f"Error in update_top_stations_chart: {str(e)}")
+        return create_error_figure(f"Could not load top stations chart. Details: {str(e)[:100]}")
 
 # Callback for district flow chart
 @app.callback(
@@ -904,56 +836,43 @@ def update_top_stations_chart(n_clicks, time_filter):
 )
 def update_district_flow_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
-        # Apply time filter
         df = data_cache['df']
         if time_filter == 'weekday':
             df = df[~df['is_weekend']]
         elif time_filter == 'weekend':
             df = df[df['is_weekend']]
-        
-        # Get top 5 districts
-        top_districts = df['STARTSTATIONARRONDISSEMENT'].value_counts().head(5).index.tolist()
-        
-        # Filter for major districts
+        top_districts = df['STARTSTATIONARRONDISSEMENT'].value_counts().head(TOP_DISTRICTS_COUNT).index.tolist()
         district_trips = df[
             df['STARTSTATIONARRONDISSEMENT'].isin(top_districts) & 
             df['ENDSTATIONARRONDISSEMENT'].isin(top_districts)
         ]
-        
-        # If we have district trips, create the flow matrix
         if len(district_trips) > 0:
-            # Create district flow matrix
             matrix = pd.crosstab(
                 district_trips['STARTSTATIONARRONDISSEMENT'], 
                 district_trips['ENDSTATIONARRONDISSEMENT']
             )
-            
-            # Convert to plotly heatmap
             fig = px.imshow(
                 matrix, 
                 text_auto=True, 
                 aspect="auto",
                 labels=dict(x="Destination District", y="Origin District", color="Trip Count"),
-                title="Trip Flows Between Top 5 Districts",
+                title=f"Trip Flows Between Top {TOP_DISTRICTS_COUNT} Districts",
                 color_continuous_scale=px.colors.sequential.Blues
             )
-            
             fig.update_layout(
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 title_font=dict(size=18, color='#333'),
                 hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
             )
-            
             return fig
         else:
-            return go.Figure()
+            return create_error_figure("Not enough data for district flow chart after filtering.")
     except Exception as e:
-        print(f"Error in district flow chart: {e}")
-        return go.Figure()
+        print(f"Error in update_district_flow_chart: {str(e)}")
+        return create_error_figure(f"Could not load district flow chart. Details: {str(e)[:100]}")
 
 # Callback for station map
 @app.callback(
@@ -963,34 +882,20 @@ def update_district_flow_chart(n_clicks, time_filter):
 )
 def update_station_map(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Create stations dataset
         stations = df.groupby('STARTSTATIONNAME').agg({
             'STARTSTATIONLATITUDE': 'first',
             'STARTSTATIONLONGITUDE': 'first',
             'STARTSTATIONARRONDISSEMENT': 'first'
         }).reset_index()
-        
         stations.columns = ['station_name', 'latitude', 'longitude', 'district']
-        
-        # Calculate station popularity
         start_counts = df['STARTSTATIONNAME'].value_counts().to_dict()
         stations['trips'] = stations['station_name'].map(start_counts)
-        
-        # Filter for valid coordinates
-        stations = stations[(stations['latitude'] > 40) & (stations['longitude'] < -70)]
-        
-        # Sort by popularity and take top 100
-        stations = stations.sort_values('trips', ascending=False).head(100)
-        
-        # Revert to scatter_mapbox to ensure map loads properly
-        # Note: This will show a deprecation warning but ensures functionality
-        # TODO: Properly migrate to scatter_map following the guide at: https://plotly.com/python/mapbox-to-maplibre/
-        fig = px.scatter_mapbox(
+        stations = stations[(stations['latitude'] > MONTREAL_LAT_LOWER_BOUND) & (stations['longitude'] < MONTREAL_LON_UPPER_BOUND)]
+        stations = stations.sort_values('trips', ascending=False).head(TOP_STATIONS_MAP_COUNT)
+        fig = px.scatter_map(
             stations,
             lat='latitude',
             lon='longitude',
@@ -998,20 +903,17 @@ def update_station_map(n_clicks, time_filter):
             color='district',
             hover_name='station_name',
             hover_data={'trips': True, 'district': True, 'latitude': False, 'longitude': False},
-            title='Top 100 Stations by Usage',
+            title=f'Top {TOP_STATIONS_MAP_COUNT} Stations by Usage',
             size_max=30,
-            zoom=11,
-            mapbox_style="carto-positron",
+            map_style="carto-positron",
             color_discrete_sequence=px.colors.qualitative.Bold
         )
-        
-        # Update layout with better map configuration
         fig.update_layout(
             margin={"r":0,"t":30,"l":0,"b":0},
             title_font=dict(size=18, color='#333'),
-            mapbox=dict(
-                center=dict(lat=45.5088, lon=-73.5878),  # Center on Montreal
-                zoom=11
+            map=dict(
+                center=dict(lat=MAP_MONTREAL_CENTER_LAT, lon=MAP_MONTREAL_CENTER_LON),
+                zoom=MAP_DEFAULT_ZOOM
             ),
             legend=dict(
                 orientation="h", 
@@ -1022,11 +924,10 @@ def update_station_map(n_clicks, time_filter):
                 bgcolor='rgba(255,255,255,0.8)'
             )
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in station map: {e}")
-        return go.Figure()
+        print(f"Error in update_station_map: {str(e)}")
+        return create_error_figure(f"Could not load station map. Details: {str(e)[:100]}")
 
 # Callback for duration distribution chart
 @app.callback(
@@ -1036,14 +937,10 @@ def update_station_map(n_clicks, time_filter):
 )
 def update_duration_dist_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Filter for reasonable durations for visualization
-        durations = df[df['duration_minutes'] < 60]['duration_minutes']
-        
+        durations = df[df['duration_minutes'] < MAX_DURATION_VISUALIZATION_MINUTES]['duration_minutes']
         fig = px.histogram(
             durations,
             x='duration_minutes',
@@ -1052,8 +949,6 @@ def update_duration_dist_chart(n_clicks, time_filter):
             title='Trip Duration Distribution',
             color_discrete_sequence=['#3498db']
         )
-        
-        # Add a line for the mean
         mean_duration = durations.mean()
         fig.add_vline(
             x=mean_duration, 
@@ -1062,7 +957,6 @@ def update_duration_dist_chart(n_clicks, time_filter):
             annotation_text=f"Mean: {mean_duration:.1f} min",
             annotation_position="top right"
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1073,11 +967,10 @@ def update_duration_dist_chart(n_clicks, time_filter):
             hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
             title_font=dict(size=18, color='#333'),
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in duration distribution chart: {e}")
-        return go.Figure()
+        print(f"Error in update_duration_dist_chart: {str(e)}")
+        return create_error_figure(f"Could not load duration distribution. Details: {str(e)[:100]}")
 
 # Callback for distance distribution chart
 @app.callback(
@@ -1087,14 +980,10 @@ def update_duration_dist_chart(n_clicks, time_filter):
 )
 def update_distance_dist_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Filter for valid distances
-        distances = df[df['distance_km'].notna() & (df['distance_km'] > 0) & (df['distance_km'] < 10)]
-        
+        distances = df[df['distance_km'].notna() & (df['distance_km'] > MIN_TRIP_DISTANCE_KM) & (df['distance_km'] < MAX_DISTANCE_VISUALIZATION_KM)]
         fig = px.histogram(
             distances,
             x='distance_km',
@@ -1103,8 +992,6 @@ def update_distance_dist_chart(n_clicks, time_filter):
             title='Trip Distance Distribution',
             color_discrete_sequence=['#2ecc71']
         )
-        
-        # Add a line for the mean
         mean_distance = distances['distance_km'].mean()
         fig.add_vline(
             x=mean_distance, 
@@ -1113,7 +1000,6 @@ def update_distance_dist_chart(n_clicks, time_filter):
             annotation_text=f"Mean: {mean_distance:.2f} km",
             annotation_position="top right"
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1124,13 +1010,10 @@ def update_distance_dist_chart(n_clicks, time_filter):
             hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
             title_font=dict(size=18, color='#333'),
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in distance distribution chart: {e}")
-        return go.Figure()
-
-# [Removed callback for duration vs distance chart]
+        print(f"Error in update_distance_dist_chart: {str(e)}")
+        return create_error_figure(f"Could not load distance distribution. Details: {str(e)[:100]}")
 
 # Callback for speed distribution chart
 @app.callback(
@@ -1140,18 +1023,14 @@ def update_distance_dist_chart(n_clicks, time_filter):
 )
 def update_speed_dist_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Filter for valid speeds
         speeds = df[
             df['speed_kmh'].notna() & 
-            (df['speed_kmh'] > 0) & 
-            (df['speed_kmh'] < 30)
+            (df['speed_kmh'] > MIN_TRIP_SPEED_KMH) & 
+            (df['speed_kmh'] < MAX_SPEED_VISUALIZATION_KMH)
         ]
-        
         fig = px.histogram(
             speeds,
             x='speed_kmh',
@@ -1160,8 +1039,6 @@ def update_speed_dist_chart(n_clicks, time_filter):
             title='Trip Speed Distribution',
             color_discrete_sequence=['#9b59b6']
         )
-        
-        # Add a line for the mean
         mean_speed = speeds['speed_kmh'].mean()
         fig.add_vline(
             x=mean_speed, 
@@ -1170,7 +1047,6 @@ def update_speed_dist_chart(n_clicks, time_filter):
             annotation_text=f"Mean: {mean_speed:.1f} km/h",
             annotation_position="top right"
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1181,11 +1057,10 @@ def update_speed_dist_chart(n_clicks, time_filter):
             hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font_size=12, font_color='white'),
             title_font=dict(size=18, color='#333'),
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in speed distribution chart: {e}")
-        return go.Figure()
+        print(f"Error in update_speed_dist_chart: {str(e)}")
+        return create_error_figure(f"Could not load speed distribution. Details: {str(e)[:100]}")
 
 # Callback for rush hour chart
 @app.callback(
@@ -1194,23 +1069,14 @@ def update_speed_dist_chart(n_clicks, time_filter):
 )
 def update_rush_hour_chart(n_clicks):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = data_cache['df']
-        
-        # Define rush hours
         df['rush_hour'] = 'Off-peak'
-        df.loc[(df['start_hour'] >= 7) & (df['start_hour'] <= 9), 'rush_hour'] = 'Morning Rush (7-9AM)'
-        df.loc[(df['start_hour'] >= 16) & (df['start_hour'] <= 18), 'rush_hour'] = 'Evening Rush (4-6PM)'
-        
-        # Get weekday data only for rush hour analysis
+        df.loc[(df['start_hour'] >= RUSH_HOUR_MORNING_START) & (df['start_hour'] <= RUSH_HOUR_MORNING_END), 'rush_hour'] = f'Morning Rush ({RUSH_HOUR_MORNING_START}-{RUSH_HOUR_MORNING_END}AM)'
+        df.loc[(df['start_hour'] >= RUSH_HOUR_EVENING_START) & (df['start_hour'] <= RUSH_HOUR_EVENING_END), 'rush_hour'] = f'Evening Rush ({RUSH_HOUR_EVENING_START % 12}-{RUSH_HOUR_EVENING_END % 12}PM)'
         weekday_df = df[~df['is_weekend']]
-        
-        # Group by rush hour and hour
         hourly_rush = weekday_df.groupby(['rush_hour', 'start_hour']).size().reset_index(name='count')
-        
-        # Create line chart with improved styling
         fig = px.line(
             hourly_rush,
             x='start_hour',
@@ -1223,31 +1089,26 @@ def update_rush_hour_chart(n_clicks):
                 'rush_hour': 'Time Period'
             },
             color_discrete_map={
-                'Morning Rush (7-9AM)': '#f39c12', 
-                'Evening Rush (4-6PM)': '#9b59b6',
+                f'Morning Rush ({RUSH_HOUR_MORNING_START}-{RUSH_HOUR_MORNING_END}AM)': '#f39c12', 
+                f'Evening Rush ({RUSH_HOUR_EVENING_START % 12}-{RUSH_HOUR_EVENING_END % 12}PM)': '#9b59b6',
                 'Off-peak': '#7f8c8d'
             }
         )
-        
         fig.update_traces(line=dict(width=4), mode='lines+markers')
-        
-        # Add shaded areas for rush hours
         fig.add_vrect(
-            x0=7, x1=9, 
+            x0=RUSH_HOUR_MORNING_START, x1=RUSH_HOUR_MORNING_END, 
             fillcolor="#f39c12", opacity=0.2, 
             layer="below", line_width=0,
             annotation_text="Morning Rush",
             annotation_position="top left"
         )
-        
         fig.add_vrect(
-            x0=16, x1=18, 
+            x0=RUSH_HOUR_EVENING_START, x1=RUSH_HOUR_EVENING_END, 
             fillcolor="#9b59b6", opacity=0.2, 
             layer="below", line_width=0,
             annotation_text="Evening Rush",
             annotation_position="top left"
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1257,11 +1118,10 @@ def update_rush_hour_chart(n_clicks):
             title_font=dict(size=18, color='#333'),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in rush hour chart: {e}")
-        return go.Figure()
+        print(f"Error in update_rush_hour_chart: {str(e)}")
+        return create_error_figure(f"Could not load rush hour analysis. Details: {str(e)[:100]}")
 
 # Callback for station flow chart
 @app.callback(
@@ -1271,32 +1131,21 @@ def update_rush_hour_chart(n_clicks):
 )
 def update_station_flow_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Calculate station net flow
         start_counts = df['STARTSTATIONNAME'].value_counts().reset_index()
         start_counts.columns = ['station', 'starts']
-        
         end_counts = df['ENDSTATIONNAME'].value_counts().reset_index()
         end_counts.columns = ['station', 'ends']
-        
         station_flow = pd.merge(start_counts, end_counts, on='station', how='outer').fillna(0)
         station_flow['net_flow'] = station_flow['starts'] - station_flow['ends']
         station_flow['total'] = station_flow['starts'] + station_flow['ends']
-        
-        # Get top 10 stations by net outflow and inflow
-        outflow = station_flow.sort_values('net_flow', ascending=False).head(10)
-        inflow = station_flow.sort_values('net_flow').head(10)
-        
-        # Combine and add flow direction
+        outflow = station_flow.sort_values('net_flow', ascending=False).head(TOP_STATIONS_COUNT)
+        inflow = station_flow.sort_values('net_flow').head(TOP_STATIONS_COUNT)
         outflow['flow_type'] = 'Net Outflow (more starts)'
         inflow['flow_type'] = 'Net Inflow (more ends)'
         flow_data = pd.concat([outflow, inflow])
-        
-        # Create bar chart with improved styling
         fig = px.bar(
             flow_data,
             x='net_flow',
@@ -1308,13 +1157,12 @@ def update_station_flow_chart(n_clicks, time_filter):
                 'station': 'Station',
                 'flow_type': 'Flow Type'
             },
-            title='Top Stations by Net Flow',
+            title=f'Top {TOP_STATIONS_COUNT} Stations by Net Flow',
             color_discrete_map={
                 'Net Outflow (more starts)': '#e74c3c',
                 'Net Inflow (more ends)': '#2ecc71'
             }
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1324,11 +1172,10 @@ def update_station_flow_chart(n_clicks, time_filter):
             title_font=dict(size=18, color='#333'),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in station flow chart: {e}")
-        return go.Figure()
+        print(f"Error in update_station_flow_chart: {str(e)}")
+        return create_error_figure(f"Could not load station flow analysis. Details: {str(e)[:100]}")
 
 # Callback for station pair chart
 @app.callback(
@@ -1338,19 +1185,12 @@ def update_station_flow_chart(n_clicks, time_filter):
 )
 def update_station_pair_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
         df = filter_dataframe(data_cache['df'], time_filter)
-        
-        # Get top station pairs
         station_pairs = df.groupby(['STARTSTATIONNAME', 'ENDSTATIONNAME']).size().reset_index(name='count')
-        top_pairs = station_pairs.sort_values('count', ascending=False).head(15)
-        
-        # Create combined pair name
+        top_pairs = station_pairs.sort_values('count', ascending=False).head(TOP_STATION_PAIRS_COUNT)
         top_pairs['pair'] = top_pairs['STARTSTATIONNAME'] + ' → ' + top_pairs['ENDSTATIONNAME']
-        
-        # Create horizontal bar chart with gradient color
         fig = px.bar(
             top_pairs,
             x='count',
@@ -1360,11 +1200,10 @@ def update_station_pair_chart(n_clicks, time_filter):
                 'count': 'Number of Trips',
                 'pair': 'Station Pair'
             },
-            title='Top 15 Station Pairs',
+            title=f'Top {TOP_STATION_PAIRS_COUNT} Station Pairs',
             color='count',
             color_continuous_scale='Viridis'
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1374,11 +1213,10 @@ def update_station_pair_chart(n_clicks, time_filter):
             title_font=dict(size=18, color='#333'),
             coloraxis_showscale=False
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in station pair chart: {e}")
-        return go.Figure()
+        print(f"Error in update_station_pair_chart: {str(e)}")
+        return create_error_figure(f"Could not load station pair analysis. Details: {str(e)[:100]}")
 
 # Callback for district duration chart
 @app.callback(
@@ -1388,23 +1226,16 @@ def update_station_pair_chart(n_clicks, time_filter):
 )
 def update_district_duration_chart(n_clicks, time_filter):
     if data_cache['df'] is None:
-        return go.Figure()
-    
+        return create_error_figure("Data not loaded. Please click 'Load Data'.")
     try:
-        df = data_cache['df']
+        df = data_cache['df'] # Start with full dataframe from cache
         if time_filter == 'weekday':
             df = df[~df['is_weekend']]
         elif time_filter == 'weekend':
             df = df[df['is_weekend']]
-        
-        # Get average duration by district
         district_durations = df.groupby('STARTSTATIONARRONDISSEMENT')['duration_minutes'].agg(['mean', 'count']).reset_index()
         district_durations.columns = ['district', 'avg_duration', 'trip_count']
-        
-        # Filter for districts with significant number of trips
-        significant_districts = district_durations[district_durations['trip_count'] > 50].sort_values('avg_duration', ascending=False)
-        
-        # Create bar chart with improved styling
+        significant_districts = district_durations[district_durations['trip_count'] > SIGNIFICANT_DISTRICT_TRIP_COUNT].sort_values('avg_duration', ascending=False)
         fig = px.bar(
             significant_districts,
             x='district',
@@ -1418,12 +1249,9 @@ def update_district_duration_chart(n_clicks, time_filter):
             color='avg_duration',
             color_continuous_scale='RdBu_r'
         )
-        
         fig.update_traces(
             hovertemplate='District: %{x}<br>Avg Duration: %{y:.1f} min<br>Trip Count: %{customdata[0]:,}'
         )
-        
-        # Add overall average as reference line
         overall_avg = df['duration_minutes'].mean()
         fig.add_hline(
             y=overall_avg, 
@@ -1432,7 +1260,6 @@ def update_district_duration_chart(n_clicks, time_filter):
             annotation_text=f"Overall Avg: {overall_avg:.1f} min",
             annotation_position="top right"
         )
-        
         fig.update_layout(
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1443,11 +1270,10 @@ def update_district_duration_chart(n_clicks, time_filter):
             title_font=dict(size=18, color='#333'),
             coloraxis_showscale=False
         )
-        
         return fig
     except Exception as e:
-        print(f"Error in district duration chart: {e}")
-        return go.Figure()
+        print(f"Error in update_district_duration_chart: {str(e)}")
+        return create_error_figure(f"Could not load district duration analysis. Details: {str(e)[:100]}")
 
 # Callback to hide map loading indicator once map is loaded
 @app.callback(
