@@ -8,11 +8,9 @@ from datetime import datetime
 import os
 from math import radians, sin, cos, sqrt, atan2
 
-# Get the directory where the script is located
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_file_path = os.path.join(current_dir, 'Bixi_2023_sample.csv')
 
-# Initialize the Dash app with improved title and metadata
 app = dash.Dash(__name__,
                 title='Bixi 2023 Analysis Dashboard',
                 meta_tags=[{'name': 'viewport',
@@ -20,13 +18,8 @@ app = dash.Dash(__name__,
 
 server = app.server
 
-# Pre-load data at startup for better UX
 print("Loading Bixi data at startup...")
 STARTUP_DATA = None
-
-
-
-# Custom CSS for better styling
 app.index_string = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -48,9 +41,6 @@ app.index_string = '''
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="Bixi 2023 Analysis Dashboard">
         <meta name="twitter:description" content="Interactive dashboard exploring Montreal's bike-sharing patterns and trends.">
-
-        <!-- Favicon -->
-        <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
 
         {%favicon%}
         {%css%}
@@ -194,9 +184,7 @@ app.index_string = '''
 </html>
 '''
 
-# App layout with improved styling
 app.layout = html.Div([
-    # Header with gradient background
     html.Div([
         html.H1('Bixi 2023 Data Analysis Dashboard',
                 style={'textAlign': 'center', 'color': 'white', 'margin': '0 0 5px 0', 'fontSize': '2rem'}),
@@ -205,10 +193,8 @@ app.layout = html.Div([
                       'fontSize': '1rem'})
     ], className='dashboard-header'),
 
-    # KPI Cards Row
     html.Div(id='kpi-cards', className='kpi-container'),
 
-    # Filters bar (horizontal, not sidebar)
     html.Div([
         html.Div([
             html.Label('Filter by:', style={'fontWeight': 'bold', 'marginRight': '10px'}),
@@ -224,22 +210,18 @@ app.layout = html.Div([
             ),
         ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'gap': '10px'}),
 
-        # Hidden elements for backward compatibility
         html.Div(id='dataset-stats', style={'display': 'none'}),
         html.Button('Load Data', id='load-data-button', style={'display': 'none'}),
         html.Div(id='loading-status', style={'display': 'none'}),
         html.Div(id='loading-output', style={'display': 'none'})
     ], className='filters-panel'),
 
-    # Charts panel - full width now
     dcc.Loading(
         id="main-loading",
         type="default",
         children=[
             html.Div([
-            # Tabs for different analysis categories
             dcc.Tabs([
-                # Temporal Patterns Tab
                 dcc.Tab(label='Temporal Patterns', children=[
                     html.Div([
                         html.Div([
@@ -264,7 +246,6 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab'),
                 
-                # Spatial Patterns Tab
                 dcc.Tab(label='Spatial Patterns', children=[
                     html.Div([
                         html.Div([
@@ -279,7 +260,6 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab'),
                 
-                # Trip Characteristics Tab
                 dcc.Tab(label='Trip Characteristics', children=[
                     html.Div([
                         html.Div([
@@ -299,7 +279,6 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab'),
                 
-                # Station Map Tab (NEW)
                 dcc.Tab(label='Station Map', children=[
                     html.Div([
                         html.Div([
@@ -315,7 +294,6 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab'),
                 
-                # Insights Tab
                 dcc.Tab(label='Key Insights', children=[
                     html.Div([
                         html.Div([
@@ -340,7 +318,6 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab'),
                 
-                # About Tab (NEW)
                 dcc.Tab(label='About', children=[
                     html.Div([
                         html.Div([
@@ -406,12 +383,10 @@ app.layout = html.Div([
     ])
 ])
 
-# Cache for loaded data
 data_cache = {
     'df': None
 }
 
-# KPI Card helper function
 def create_kpi_card(label, value, subtitle=""):
     return html.Div([
         html.Div(label, className='kpi-label'),
@@ -419,16 +394,13 @@ def create_kpi_card(label, value, subtitle=""):
         html.Div(subtitle, className='kpi-subtitle') if subtitle else None
     ], className='kpi-card')
 
-# Data loading function (fixed version)
 def load_bixi_data(file_path):
     """
     Load a fixed sample of the Bixi dataset with time conversions
     to prevent memory issues with the full 3GB dataset
     """
-    # Define the fixed sample size
     SAMPLE_SIZE = 100000
     
-    # Define optimized dtypes
     dtypes = {
         'STARTSTATIONNAME': str,
         'STARTSTATIONARRONDISSEMENT': str,
@@ -442,13 +414,10 @@ def load_bixi_data(file_path):
         'ENDTIMEMS': float
     }
     
-    # Load data with error handling
     try:
-        # First try with specified dtypes
         df = pd.read_csv(file_path, nrows=SAMPLE_SIZE, dtype=dtypes)
     except Exception as e:
         print(f"Error with specified dtypes: {e}")
-        # If that fails, try with automatic dtype inference
         try:
             df = pd.read_csv(file_path, nrows=SAMPLE_SIZE)
             print("Loaded with automatic dtype inference")
@@ -456,15 +425,12 @@ def load_bixi_data(file_path):
             print(f"Error with automatic inference: {e}")
             raise e
     
-    # Now that we have the data, convert to appropriate types and handle errors
     try:
-        # Convert timestamps and add derived columns
         df['start_time'] = pd.to_datetime(df['STARTTIMEMS'], unit='ms')
         df['end_time'] = pd.to_datetime(df['ENDTIMEMS'], unit='ms', errors='coerce')
         df['duration_seconds'] = (df['ENDTIMEMS'] - df['STARTTIMEMS']) / 1000
         df['duration_minutes'] = df['duration_seconds'] / 60
         
-        # Add time components
         df['start_hour'] = df['start_time'].dt.hour
         df['start_day'] = df['start_time'].dt.day_name()
         df['start_date'] = df['start_time'].dt.date
@@ -472,14 +438,10 @@ def load_bixi_data(file_path):
         df['start_month_name'] = df['start_time'].dt.month_name()
         df['is_weekend'] = df['start_time'].dt.dayofweek >= 5
         
-        # Filter valid trips
         df = df[(df['duration_minutes'] > 0) & (df['duration_minutes'] < 1440)]  # Max 24 hours
         
-        # Debug info
         print(f"Loaded {len(df)} valid trips from {file_path}")
         
-        # Calculate distances for valid coordinates
-        # Make sure latitude and longitude are numeric
         for col in ['STARTSTATIONLATITUDE', 'STARTSTATIONLONGITUDE', 'ENDSTATIONLATITUDE', 'ENDSTATIONLONGITUDE']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
@@ -497,12 +459,10 @@ def load_bixi_data(file_path):
             ), axis=1
         )
         
-        # Speed calculation
         df.loc[valid_coords, 'speed_kmh'] = (
             df.loc[valid_coords, 'distance_km'] / (df.loc[valid_coords, 'duration_minutes'] / 60)
         )
         
-        # Filter realistic speeds and distances
         df = df[(df['distance_km'].isna()) | 
                ((df['distance_km'] >= 0) & (df['distance_km'] < 15))]
         
