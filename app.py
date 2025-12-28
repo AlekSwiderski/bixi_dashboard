@@ -13,57 +13,126 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 data_file_path = os.path.join(current_dir, 'Bixi_2023_sample.csv')
 
 # Initialize the Dash app with improved title and metadata
-app = dash.Dash(__name__, 
+app = dash.Dash(__name__,
                 title='Bixi 2023 Analysis Dashboard',
-                meta_tags=[{'name': 'viewport', 
+                meta_tags=[{'name': 'viewport',
                            'content': 'width=device-width, initial-scale=1.0'}])
 
 server = app.server
+
+# Pre-load data at startup for better UX
+print("Loading Bixi data at startup...")
+STARTUP_DATA = None
 
 
 
 # Custom CSS for better styling
 app.index_string = '''
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
         {%metas%}
         <title>{%title%}</title>
+
+        <!-- SEO Meta Tags -->
+        <meta name="description" content="Interactive dashboard analyzing Montreal's Bixi bike-sharing system data from 2023. Explore trip patterns, popular stations, and usage trends.">
+        <meta name="keywords" content="Bixi, Montreal, bike sharing, data visualization, cycling, transportation, dashboard">
+        <meta name="author" content="Alek Swiderski">
+
+        <!-- Open Graph Meta Tags -->
+        <meta property="og:title" content="Bixi 2023 Analysis Dashboard">
+        <meta property="og:description" content="Interactive dashboard exploring Montreal's bike-sharing patterns and trends.">
+        <meta property="og:type" content="website">
+
+        <!-- Twitter Card Meta Tags -->
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="Bixi 2023 Analysis Dashboard">
+        <meta name="twitter:description" content="Interactive dashboard exploring Montreal's bike-sharing patterns and trends.">
+
+        <!-- Favicon -->
+        <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚲</text></svg>">
+
         {%favicon%}
         {%css%}
         <style>
+            * {
+                box-sizing: border-box;
+            }
+
             body {
                 font-family: 'Segoe UI', 'Roboto', sans-serif;
                 background-color: #f5f7fa;
                 margin: 0;
                 color: #2c3e50;
             }
+
             .dashboard-header {
-                background: linear-gradient(135deg, #2c3e50, #4ca1af);
+                background: linear-gradient(135deg, #e41e31, #c41e3a);
                 color: white;
-                padding: 20px;
-                border-radius: 0 0 15px 15px;
+                padding: 25px 20px;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             }
+
+            .kpi-container {
+                display: flex;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 15px;
+                padding: 20px;
+                background: linear-gradient(135deg, #2c3e50, #34495e);
+            }
+
+            .kpi-card {
+                background: white;
+                border-radius: 10px;
+                padding: 20px 25px;
+                text-align: center;
+                min-width: 160px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                transition: transform 0.3s;
+            }
+
+            .kpi-card:hover {
+                transform: translateY(-3px);
+            }
+
+            .kpi-value {
+                font-size: 28px;
+                font-weight: bold;
+                color: #e41e31;
+                margin: 5px 0;
+            }
+
+            .kpi-label {
+                font-size: 12px;
+                color: #666;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .kpi-subtitle {
+                font-size: 11px;
+                color: #999;
+                margin-top: 3px;
+            }
+
             .filters-panel {
                 background-color: white;
                 border-radius: 10px;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1);
                 padding: 20px;
-                height: calc(100vh - 40px);
-                overflow-y: auto;
-                position: fixed;
-                width: 15%;
-                max-width: 250px;
-                z-index: 1000;
+                margin: 20px;
+                margin-bottom: 0;
             }
+
             .stats-box {
                 background-color: #f8f9fa;
                 border-radius: 8px;
                 padding: 15px;
                 margin-top: 20px;
-                border-left: 4px solid #3498db;
+                border-left: 4px solid #e41e31;
             }
+
             .chart-container {
                 background-color: white;
                 border-radius: 10px;
@@ -72,40 +141,45 @@ app.index_string = '''
                 padding: 15px;
                 transition: transform 0.3s;
             }
+
             .chart-container:hover {
-                transform: translateY(-5px);
+                transform: translateY(-3px);
             }
-            .dash-tab {
-                border-radius: 5px 5px 0 0;
+
+            .tab-content {
+                padding: 20px;
             }
-            .dash-tab--selected {
-                background-color: #3498db;
-                color: white;
+
+            /* Loading spinner */
+            ._dash-loading {
+                margin: 50px auto;
             }
-            .load-button {
-                background: linear-gradient(to right, #3498db, #2980b9);
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                text-align: center;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 16px;
-                margin: 20px 0px;
-                cursor: pointer;
-                border-radius: 50px;
-                width: 100%;
-                transition: all 0.3s;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+            /* Responsive */
+            @media (max-width: 768px) {
+                .kpi-card {
+                    min-width: 140px;
+                    padding: 15px;
+                }
+                .kpi-value {
+                    font-size: 22px;
+                }
             }
-            .load-button:hover {
-                background: linear-gradient(to right, #2980b9, #3498db);
-                box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+
+            /* Better scrollbar */
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
             }
-            .dropdown {
-                border-radius: 5px;
-                border: 1px solid #ddd;
-                margin-bottom: 15px;
+            ::-webkit-scrollbar-track {
+                background: #f1f1f1;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: #555;
             }
         </style>
     </head>
@@ -124,20 +198,20 @@ app.index_string = '''
 app.layout = html.Div([
     # Header with gradient background
     html.Div([
-        html.H1('Bixi 2023 Data Analysis Dashboard', 
-                style={'textAlign': 'center', 'color': 'white', 'margin-bottom': '10px'}),
-        html.H3('Exploring Montreal\'s Bike-Sharing Patterns', 
-                style={'textAlign': 'center', 'color': 'rgba(255,255,255,0.85)', 'margin-top': '0px', 
-                       'font-weight': 'normal'})
+        html.H1('Bixi 2023 Data Analysis Dashboard',
+                style={'textAlign': 'center', 'color': 'white', 'margin': '0 0 5px 0', 'fontSize': '2rem'}),
+        html.P('Exploring Montreal\'s Bike-Sharing Patterns',
+               style={'textAlign': 'center', 'color': 'rgba(255,255,255,0.85)', 'margin': '0',
+                      'fontSize': '1rem'})
     ], className='dashboard-header'),
-    
-    # Main content
+
+    # KPI Cards Row
+    html.Div(id='kpi-cards', className='kpi-container'),
+
+    # Filters bar (horizontal, not sidebar)
     html.Div([
-        # Filters panel
         html.Div([
-            html.H4('Filters', style={'textAlign': 'center', 'borderBottom': '2px solid #3498db', 'paddingBottom': '10px'}),
-            
-            html.Label('Time Period:', style={'marginTop': '20px', 'fontWeight': 'bold', 'display': 'block', 'marginBottom': '5px'}),
+            html.Label('Filter by:', style={'fontWeight': 'bold', 'marginRight': '10px'}),
             dcc.Dropdown(
                 id='time-filter',
                 options=[
@@ -146,40 +220,23 @@ app.layout = html.Div([
                     {'label': 'Weekends Only', 'value': 'weekend'}
                 ],
                 value='all',
-                className='dropdown'
+                style={'width': '200px', 'display': 'inline-block'}
             ),
-            
+        ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'gap': '10px'}),
+
+        # Hidden elements for backward compatibility
+        html.Div(id='dataset-stats', style={'display': 'none'}),
+        html.Button('Load Data', id='load-data-button', style={'display': 'none'}),
+        html.Div(id='loading-status', style={'display': 'none'}),
+        html.Div(id='loading-output', style={'display': 'none'})
+    ], className='filters-panel'),
+
+    # Charts panel - full width now
+    dcc.Loading(
+        id="main-loading",
+        type="default",
+        children=[
             html.Div([
-                html.H4('Dataset Statistics', style={'textAlign': 'center', 'marginTop': '30px', 'borderBottom': '2px solid #3498db', 'paddingBottom': '10px'}),
-                html.Div(id='dataset-stats')
-            ], className='stats-box'),
-            
-            html.Div([
-                html.Button(
-                    'Load Data',
-                    id='load-data-button',
-                    className='load-button'
-                ),
-                html.Div(
-                    id='loading-status',
-                    children=[
-                        html.P(
-                            "Click 'Load Data' to begin analysis. Loading may take 5-10 seconds.",
-                            style={'textAlign': 'center', 'color': '#7f8c8d', 'fontSize': '12px', 'marginTop': '5px'}
-                        )
-                    ]
-                ),
-                # Add a spinner for visual feedback
-                dcc.Loading(
-                    id="loading-spinner",
-                    type="circle",
-                    children=html.Div(id="loading-output")
-                )
-            ])
-        ], className='filters-panel', style={'width': '15%', 'float': 'left'}),
-        
-        # Charts panel
-        html.Div([
             # Tabs for different analysis categories
             dcc.Tabs([
                 # Temporal Patterns Tab
@@ -345,7 +402,7 @@ app.layout = html.Div([
                     ])
                 ], className='dash-tab')
             ], style={'margin-bottom': '20px'})
-        ], style={'width': '85%', 'float': 'right', 'padding': '20px 20px 20px 16%'})
+        ], className='tab-content')
     ])
 ])
 
@@ -353,6 +410,14 @@ app.layout = html.Div([
 data_cache = {
     'df': None
 }
+
+# KPI Card helper function
+def create_kpi_card(label, value, subtitle=""):
+    return html.Div([
+        html.Div(label, className='kpi-label'),
+        html.Div(value, className='kpi-value'),
+        html.Div(subtitle, className='kpi-subtitle') if subtitle else None
+    ], className='kpi-card')
 
 # Data loading function (fixed version)
 def load_bixi_data(file_path):
@@ -454,23 +519,69 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     """Calculate distance between two points in km using Haversine formula"""
     try:
         R = 6371  # Earth radius in km
-        
+
         # Convert to radians
         lat1, lon1, lat2, lon2 = map(radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
-        
+
         # Haversine formula
         dlat = lat2 - lat1
         dlon = lon2 - lon1
         a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
         c = 2 * atan2(sqrt(a), sqrt(1-a))
         distance = R * c
-        
+
         return distance
     except Exception as e:
         print(f"Error calculating distance: {e}")
         return None
 
-# Callback to load data
+# AUTO-LOAD DATA AT STARTUP
+try:
+    print("Auto-loading Bixi data at startup...")
+    data_cache['df'] = load_bixi_data(data_file_path)
+    print(f"Loaded {len(data_cache['df']):,} valid trips successfully!")
+except Exception as e:
+    print(f"Error auto-loading data: {e}")
+    data_cache['df'] = None
+
+# Callback for KPI cards - updates on startup and filter change
+@app.callback(
+    Output('kpi-cards', 'children'),
+    [Input('time-filter', 'value')]
+)
+def update_kpi_cards(time_filter):
+    if data_cache['df'] is None:
+        return [html.Div("Loading data...", style={'color': 'white', 'textAlign': 'center', 'width': '100%'})]
+
+    df = data_cache['df']
+
+    # Apply time filter
+    if time_filter == 'weekday':
+        df = df[~df['is_weekend']]
+    elif time_filter == 'weekend':
+        df = df[df['is_weekend']]
+
+    # Calculate KPIs
+    total_trips = len(df)
+    unique_stations = df['STARTSTATIONNAME'].nunique()
+    avg_duration = df['duration_minutes'].mean()
+    avg_distance = df.loc[df['distance_km'].notna(), 'distance_km'].mean()
+    avg_speed = df.loc[df['speed_kmh'].notna(), 'speed_kmh'].mean()
+
+    # Date range
+    date_min = df['start_time'].min().strftime('%b %d')
+    date_max = df['start_time'].max().strftime('%b %d, %Y')
+
+    return [
+        create_kpi_card("Total Trips", f"{total_trips:,}", "valid trips analyzed"),
+        create_kpi_card("Unique Stations", f"{unique_stations:,}", "across Montreal"),
+        create_kpi_card("Avg Duration", f"{avg_duration:.1f} min", "per trip"),
+        create_kpi_card("Avg Distance", f"{avg_distance:.2f} km", "per trip"),
+        create_kpi_card("Avg Speed", f"{avg_speed:.1f} km/h", "cycling speed"),
+        create_kpi_card("Date Range", f"{date_min} - {date_max}", "2023 season"),
+    ]
+
+# Callback to load data (kept for backward compatibility but auto-loads now)
 @app.callback(
     Output('dataset-stats', 'children'),
     [Input('load-data-button', 'n_clicks')]
@@ -1461,4 +1572,4 @@ def hide_map_loading_indicator(figure):
 
 # Run the app
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run(debug=True)
